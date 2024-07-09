@@ -1,0 +1,50 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <limits.h>
+#include <string.h>
+
+#define ERROR_EXIT(msg) { perror(msg); exit(EXIT_FAILURE); }
+
+int main(int argc, char *argv[]) {
+    static char oldpwd[PATH_MAX];
+    char cwd[PATH_MAX];
+
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <directory>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    // Get the current working directory
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        ERROR_EXIT("getcwd() error");
+    }
+
+    if (strcmp(argv[1], "-") == 0) {
+        // Handle "cd -"
+        if (strlen(oldpwd) == 0) {
+            fprintf(stderr, "OLDPWD not set\n");
+            return EXIT_FAILURE;
+        }
+        if (chdir(oldpwd) != 0) {
+            ERROR_EXIT("chdir() error");
+        }
+        printf("%s\n", oldpwd);
+    } else {
+        // Change to the specified directory
+        if (chdir(argv[1]) != 0) {
+            ERROR_EXIT("chdir() error");
+        }
+    }
+
+    // Update oldpwd
+    strncpy(oldpwd, cwd, sizeof(oldpwd));
+
+    // Print the current working directory after change
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        ERROR_EXIT("getcwd() error");
+    }
+    printf("Current directory: %s\n", cwd);
+
+    return EXIT_SUCCESS;
+}
