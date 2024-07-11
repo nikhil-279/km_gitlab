@@ -1,0 +1,110 @@
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#define BUFFER_SIZE 1024
+
+// Function to get the HOME environment variable
+char* get_home_directory(char *buffer, size_t size) {
+    int fd = open("/proc/self/environ", O_RDONLY);
+    if (fd == -1) {
+        return NULL;
+    }
+
+    ssize_t len = read(fd, buffer, size - 1);
+    if (len == -1) {
+        close(fd);
+        return NULL;
+    }
+
+    buffer[len] = '\0';
+
+    // Parse the environment variables
+    char *p = buffer;
+    while (p < buffer + len) {
+        if (strncmp(p, "HOME=", 5) == 0) {
+            close(fd);
+            return p + 5;
+        }
+        p += strlen(p) + 1;
+    }
+
+    close(fd);
+    return NULL;
+}
+
+// Function to get the current working directory using /proc/self/cwd
+char* my_getcwd(char* buffer, size_t size) {
+    ssize_t len = readlink("/proc/self/cwd", buffer, size - 1);
+    if (len == -1) {
+        return NULL;
+    }
+
+    buffer[len] = '\0';
+    return buffer;
+}
+
+int main(int argc, char *argv[]) {
+    char cwd[BUFFER_SIZE];
+    static char prev_dir[BUFFER_SIZE] = "";
+
+    // Save the current directory at the start
+    if (my_getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("getcwd");
+        return 1;
+    }
+
+    // If no arguments or "~" is passed, change to home directory
+    if (argc == 1 || (argc == 2 && strcmp(argv[1], "~") == 0)) {
+        char env_buffer[BUFFER_SIZE];
+        char *home_dir = get_home_directory(env_buffer, sizeof(env_buffer));
+        if (!home_dir) {
+            fprintf(stderr, "Error: HOME environment variable is not set.\n");
+            return 1;
+        }
+        if (chdir(home_dir) != 0) {
+            perror("chdir");
+            return 1;
+        }
+        strcpy(prev_dir, cwd);
+        printf("Changed directory to home: %s\n", home_dir);
+    }
+    // If "-" is passed, change to the previous directory
+    else if (argc == 2 && strcmp(argv[1], "-") == 0) {
+        if (prev_dir[0] == '\0') {
+            fprintf(stderr, "Error: No previous directory to switch to.\n");
+            return 1;
+        }
+        if (chdir(prev_dir) != 0) {
+            perror("chdir");
+            return 1;
+        }
+        printf("Changed directory to previous: %s\n", prev_dir);
+        strcpy(prev_dir, cwd);
+    }
+    // Change to the specified directory
+    else if (argc == 2) {
+        // Save current directory as previous before changing
+        strcpy(prev_dir, cwd);
+
+        if (chdir(argv[1]) != 0) {
+            perror("chdir");
+            return 1;
+        }
+        if (my_getcwd(cwd, sizeof(cwd)) != NULL) {
+            printf("Changed directory to: %s\n", cwd);
+        } else {
+            perror("getcwd");
+            return 1;
+        }
+    } else {
+        fprintf(stderr, "Usage: %s [directory]\n", argv[0]);
+        return 1;
+    }
+
+    return 0;
+}
